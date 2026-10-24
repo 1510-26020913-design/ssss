@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>플랑크톤과 편의점 과자 털기 3D (1인칭 시점)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&family=Gamja+Flower&display=swap');
+        
+        body {
+            font-family: 'Jua', sans-serif;
+            background: #020617;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .arcade-glass {
+            background: radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.6) 100%),
+                        linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 50%);
+            pointer-events: none;
+        }
+
+        .font-gamja {
+            font-family: 'Gamja Flower', cursive;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 40px rgba(16, 185, 129, 0.25), 0 0 20px rgba(0, 0, 0, 0.9);
+            border: 3px solid #334155;
+            border-radius: 1.25rem;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .scanlines {
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+
+        @keyframes pulse-alarm {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.45; background-color: #ef4444; }
+        }
+        .alarm-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: none;
+            z-index: 10;
+        }
+        .alarm-active {
+            display: block;
+            animation: pulse-alarm 0.6s infinite ease-in-out;
+        }
+
+        /* Speed Boost Overlay Effect */
+        @keyframes speed-glow {
+            0%, 100% { box-shadow: inset 0 0 30px rgba(59, 130, 246, 0.5); }
+            50% { box-shadow: inset 0 0 60px rgba(59, 130, 246, 0.8); }
+        }
+        .speed-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: none;
+            z-index: 9;
+            animation: speed-glow 0.8s infinite ease-in-out;
+        }
+
+        .btn-action {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 6px 0 #991b1b, 0 10px 15px rgba(239, 68, 68, 0.3);
+        }
+        .btn-action:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.1);
+        }
+        .btn-action:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #991b1b;
+        }
+
+        .btn-start {
+            box-shadow: 0 6px 0 #15803d, 0 10px 20px rgba(16, 185, 129, 0.4);
+        }
+        .btn-start:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.1);
+        }
+        .btn-start:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #15803d;
+        }
+
+        .plankton-view-hand {
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            z-index: 5;
+            transition: transform 0.1s ease-out;
+        }
+
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 6;
+            transition: all 0.2s ease;
+        }
+        .crosshair::before, .crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(16, 185, 129, 0.8);
+            transition: background 0.2s ease;
+        }
+        .crosshair::before {
+            top: 4px; left: -6px; width: 22px; height: 2px;
+        }
+        .crosshair::after {
+            top: -6px; left: 4px; width: 2px; height: 22px;
+        }
+        .crosshair-target::before, .crosshair-target::after {
+            background: rgba(245, 158, 11, 1);
+        }
+
+        .dpad-btn {
+            background: rgba(30, 41, 59, 0.85);
+            border: 2px solid rgba(52, 211, 153, 0.6);
+            color: #34d399;
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            transition: all 0.1s ease;
+        }
+        .dpad-btn:active {
+            background: rgba(16, 185, 129, 0.8);
+            color: #ffffff;
+            transform: scale(0.92);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 text-white">
+
+    <div class="w-full max-w-4xl flex flex-col items-center">
+        
+        <!-- Header HUD Bar -->
+        <header class="w-full flex items-center justify-between px-4 py-3 mb-2 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-xl">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-2xl shadow-inner">
+                    🏪
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-2xl font-black bg-gradient-to-r from-emerald-400 via-amber-300 to-red-400 bg-clip-text text-transparent leading-tight">
+                        플랑크톤과 편의점 과자 털기 3D
+                    </h1>
+                    <p class="text-[10px] sm:text-xs text-slate-400 font-sans hidden sm:block">아이템 강화 업데이트 v2.0</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <div class="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-amber-500/30 flex items-center shadow-inner">
+                    <i class="fa-solid fa-stopwatch text-amber-400 text-base sm:text-lg mr-2 animate-pulse"></i>
+                    <span id="ui-timer" class="font-mono text-xl sm:text-2xl font-black text-amber-300 tracking-wider">01:15</span>
+                </div>
+                <div class="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-emerald-500/30 flex items-center shadow-inner">
+                    <i class="fa-solid fa-cookie-bite text-amber-400 text-base sm:text-lg mr-2"></i>
+                    <span id="ui-snacks" class="font-black text-emerald-400 text-lg sm:text-xl">0 / 5</span>
+                </div>
+                <div class="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-rose-500/30 flex items-center shadow-inner">
+                    <span id="ui-lives" class="flex space-x-1 text-red-500 text-base sm:text-xl">
+                        <i class="fa-solid fa-heart"></i>
+                        <i class="fa-solid fa-heart"></i>
+                        <i class="fa-solid fa-heart"></i>
+                    </span>
+                </div>
+                <button id="btn-inventory" class="bg-slate-800 hover:bg-slate-700 border border-emerald-500/50 px-3 py-1.5 rounded-xl text-emerald-400 hover:text-emerald-300 text-base sm:text-lg transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-md">
+                    <i class="fa-solid fa-box-archive"></i>
+                    <span class="text-xs font-bold hidden sm:inline">인벤토리</span>
+                </button>
+                <button id="btn-pause" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1.5 rounded-xl text-amber-400 hover:text-amber-300 text-base sm:text-lg transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-md">
+                    <i class="fa-solid fa-pause"></i>
+                    <span class="text-xs font-bold hidden sm:inline">일시정지</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Canvas Container -->
+        <div id="game-container" class="w-full relative aspect-[4/3] max-h-[65vh]">
+            <canvas id="gameCanvas"></canvas>
+            
+            <div class="scanlines absolute inset-0"></div>
+            <div class="arcade-glass absolute inset-0"></div>
+            
+            <!-- Real-time 2D Minimap HUD -->
+            <div class="absolute top-3 left-3 z-10 bg-slate-900/85 border-2 border-emerald-500/60 rounded-xl p-1.5 shadow-2xl backdrop-blur-md flex flex-col items-center">
+                <div class="text-[10px] font-bold text-emerald-400 mb-1 flex items-center gap-1">
+                    <i class="fa-solid fa-map"></i> 레이더 미니맵
+                </div>
+                <canvas id="minimapCanvas" width="112" height="112" class="rounded-lg bg-slate-950 border border-slate-700/80"></canvas>
+                <div class="flex items-center justify-between w-full mt-1 px-0.5 text-[9px] font-bold">
+                    <span class="text-emerald-400 flex items-center gap-0.5"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>나</span>
+                    <span class="text-red-500 flex items-center gap-0.5"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>집게</span>
+                    <span class="text-amber-300 flex items-center gap-0.5"><span class="w-2 h-2 rounded-full bg-amber-300 inline-block"></span>과자</span>
+                </div>
+            </div>
+
+            <div id="ui-crosshair" class="crosshair"></div>
+            
+            <!-- Overlays -->
+            <div id="alarm-layer" class="alarm-overlay"></div>
+            <div id="speed-layer" class="speed-overlay"></div>
+
+            <!-- Active Status Indicator (Buffs/Debuffs) -->
+            <div id="status-banner" class="absolute top-3 right-3 z-10 flex flex-col gap-1.5 items-end">
+                <div id="buff-speed" class="hidden bg-blue-600/90 border border-blue-300 text-white font-bold px-3 py-1 rounded-xl text-xs flex items-center gap-1.5 shadow-lg animate-pulse">
+                    <i class="fa-solid fa-bolt text-yellow-300"></i> 스피드 부스트 UP!
+                </div>
+                <div id="debuff-stun" class="hidden bg-amber-600/90 border border-amber-300 text-white font-bold px-3 py-1 rounded-xl text-xs flex items-center gap-1.5 shadow-lg animate-bounce">
+                    <i class="fa-solid fa-face-flushed text-yellow-200"></i> 미끄러짐 (스턴)!
+                </div>
+            </div>
+
+            <div id="exit-unlocked-banner" class="absolute top-4 left-1/2 -translate-x-1/2 z-15 bg-emerald-500/90 text-white font-black px-6 py-2 rounded-full text-sm sm:text-base shadow-2xl animate-bounce border-2 border-white hidden flex items-center gap-2">
+                <i class="fa-solid fa-door-open text-xl"></i>
+                <span>모든 과자 수집 완료! 북쪽 초록 출구로 탈출하세요!</span>
+            </div>
+
+            <!-- POV Antenna Overlay -->
+            <div id="pov-hands" class="plankton-view-hand w-56 sm:w-72 opacity-90">
+                <svg viewBox="0 0 200 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M 30 100 C 35 50, 20 30, 10 10" stroke="#10b981" stroke-width="8" stroke-linecap="round"/>
+                    <circle cx="10" cy="10" r="6" fill="#34d399"/>
+                    
+                    <path d="M 170 100 C 165 50, 180 30, 190 10" stroke="#10b981" stroke-width="8" stroke-linecap="round"/>
+                    <circle cx="190" cy="10" r="6" fill="#34d399"/>
+
+                    <ellipse cx="100" cy="120" rx="90" ry="40" fill="#047857" opacity="0.3"/>
+                </svg>
+            </div>
+
+            <!-- Virtual Mobile D-Pad -->
+            <div id="mobile-dpad-overlay" class="absolute bottom-3 left-3 right-3 z-15 flex justify-between items-end pointer-events-none md:hidden">
+                <div class="grid grid-cols-3 gap-1.5 w-36 h-36 pointer-events-auto p-1 bg-slate-950/40 rounded-3xl backdrop-blur-sm border border-slate-700/50">
+                    <div></div>
+                    <button id="touch-fwd" class="dpad-btn text-xl"><i class="fa-solid fa-caret-up"></i></button>
+                    <div></div>
+
+                    <button id="touch-left" class="dpad-btn text-xl"><i class="fa-solid fa-caret-left"></i></button>
+                    <div class="flex items-center justify-center text-[10px] text-slate-500 font-bold">MOVE</div>
+                    <button id="touch-right" class="dpad-btn text-xl"><i class="fa-solid fa-caret-right"></i></button>
+
+                    <div></div>
+                    <button id="touch-bwd" class="dpad-btn text-xl"><i class="fa-solid fa-caret-down"></i></button>
+                    <div></div>
+                </div>
+
+                <div class="pointer-events-auto pb-1">
+                    <button id="touch-jump" class="w-20 h-20 rounded-full bg-indigo-600/85 active:bg-indigo-500 border-2 border-indigo-300 text-white font-extrabold text-sm shadow-2xl backdrop-blur-sm flex flex-col items-center justify-center gap-1 active:scale-95 transition">
+                        <i class="fa-solid fa-angles-up text-lg"></i>
+                        <span>점프</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Inventory Screen Overlay -->
+            <div id="screen-inventory" class="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center z-25 hidden">
+                <div class="max-w-md w-full bg-slate-900 border-2 border-emerald-500/70 p-5 sm:p-6 rounded-3xl shadow-2xl">
+                    <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
+                        <div class="flex items-center gap-2 text-emerald-400 font-black text-xl sm:text-2xl">
+                            <i class="fa-solid fa-box-open"></i>
+                            <span>플랑이의 과자 가방</span>
+                        </div>
+                        <button id="btn-close-inventory" class="text-slate-400 hover:text-white text-2xl px-2 active:scale-95 transition">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <p class="text-slate-300 text-xs sm:text-sm mb-4 font-gamja text-lg">획득한 과자 및 특수 아이템 정보입니다.</p>
+                    
+                    <div id="inventory-grid" class="grid grid-cols-5 gap-2 bg-slate-950 p-3 rounded-2xl border border-slate-800 min-h-[90px] mb-4">
+                    </div>
+
+                    <button id="btn-resume-inventory" class="btn-start w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-base rounded-xl cursor-pointer transition">
+                        닫기 및 계속하기
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pause Screen Overlay -->
+            <div id="screen-pause" class="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-25 hidden">
+                <div class="max-w-xs sm:max-w-sm w-full bg-slate-900 border-2 border-amber-500/60 p-6 rounded-3xl shadow-2xl">
+                    <div class="text-5xl mb-3">⏸️</div>
+                    <h2 class="text-2xl sm:text-3xl font-black text-amber-300 mb-2">일시정지</h2>
+                    <p class="text-slate-300 text-sm mb-6 font-gamja text-xl">게임이 잠시 멈췄습니다.</p>
+                    
+                    <div class="space-y-3">
+                        <button id="btn-resume" class="btn-start w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-lg rounded-xl cursor-pointer transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-play"></i>게임 계속하기
+                        </button>
+                        <button id="btn-restart-pause" class="btn-action w-full py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold text-base rounded-xl cursor-pointer transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-rotate-right"></i>처음부터 다시
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Start Screen Overlay -->
+            <div id="screen-start" class="absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
+                <div class="max-w-md w-full bg-slate-900/90 border-2 border-emerald-500/50 p-6 sm:p-8 rounded-3xl shadow-2xl relative overflow-hidden">
+                    <div class="text-6xl mb-3 animate-pulse">👁️🏪🍪</div>
+                    <h2 class="text-2xl sm:text-3xl font-black text-amber-300 mb-2 tracking-wide">1인칭 플랑크톤 편의점 습격!</h2>
+                    <p class="text-slate-300 text-sm sm:text-base mb-4 font-gamja text-xl leading-relaxed">
+                        화려한 3D 편의점을 누비며 과자를 털어라!<br>
+                        에너지 드링크⚡를 먹고 빠르게 달리고, 바나나 껍질🍌을 조심하세요.
+                    </p>
+
+                    <div class="bg-slate-800/90 p-4 rounded-2xl border border-slate-700/80 text-left text-xs sm:text-sm space-y-2 mb-4 shadow-inner">
+                        <div class="flex items-center text-emerald-400 font-bold">
+                            <i class="fa-solid fa-circle-check mr-2 text-base"></i> 미션: 제한시간 내 과자 5개 수집 후 출구로 탈출
+                        </div>
+                        <div class="flex items-center text-blue-400 font-bold">
+                            <i class="fa-solid fa-bolt mr-2 text-base"></i> 아이템: 에너지 드링크(속도 증가) / 바나나(스턴)
+                        </div>
+                        <div class="flex items-center text-red-400 font-bold">
+                            <i class="fa-solid fa-triangle-exclamation mr-2 text-base"></i> 경고: 집게사장의 시야에 들면 즉시 추격해옵니다!
+                        </div>
+                    </div>
+
+                    <!-- Asset Attribution -->
+                    <div class="mb-4 text-xs text-slate-400 font-mono flex items-center justify-center gap-1 opacity-80">
+                        <i class="fa-solid fa-cube text-emerald-400"></i>
+                        <span>Asset by Kenney</span>
+                    </div>
+
+                    <button id="btn-start" class="btn-start w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xl sm:text-2xl rounded-2xl cursor-pointer transition">
+                        <i class="fa-solid fa-eye mr-2"></i>편의점으로 침투!
+                    </button>
+                </div>
+            </div>
+
+            <!-- Game Result Screen -->
+            <div id="screen-result" class="absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-30 hidden">
+                <div id="result-box" class="max-w-md w-full bg-slate-900 border-2 p-6 sm:p-8 rounded-3xl shadow-2xl">
+                    <div id="result-icon" class="text-6xl mb-3 animate-bounce">🏆</div>
+                    <h2 id="result-title" class="text-3xl sm:text-4xl font-black mb-2">미션 완료!</h2>
+                    <p id="result-msg" class="text-slate-300 mb-6 font-gamja text-2xl">집게사장의 눈을 피해 과자 털기에 성공했습니다!</p>
+
+                    <div id="result-stats" class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 text-left space-y-2.5 mb-6 text-sm sm:text-base">
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400">남은 시간:</span>
+                            <span id="stat-time" class="font-mono font-bold text-amber-300 text-lg">00:00</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400">획득한 과자:</span>
+                            <span id="stat-snacks" class="font-bold text-emerald-400 text-lg">5 / 5 개</span>
+                        </div>
+                    </div>
+
+                    <button id="btn-restart" class="btn-action w-full py-4 bg-red-600 hover:bg-red-500 text-white font-extrabold text-xl sm:text-2xl rounded-2xl cursor-pointer transition">
+                        <i class="fa-solid fa-rotate-right mr-2"></i>다시 도전하기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Dynamic Canvas Texture Generators
+         */
+        function createSnackTexture(label, bgColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(0, 0, 128, 128);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(64, 64, 46, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = bgColor;
+            ctx.font = 'bold 24px "Jua", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, 64, 52);
+
+            ctx.fillStyle = '#ef4444';
+            ctx.font = 'bold 18px "Jua", sans-serif';
+            ctx.fillText("1+1", 64, 82);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        }
+
+        /**
+         * Sound Synth Engine
+         */
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playJump() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(400, now + 0.15);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+
+            playItem() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.setValueAtTime(800, now + 0.08);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            }
+
+            playTrap() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+
+            playSnack() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const freqs = [523.25, 659.25, 783.99, 1046.50];
+                freqs.forEach((f, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(f, now + i * 0.05);
+                    gain.gain.setValueAtTime(0.2, now + i * 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.05);
+                    osc.stop(now + i * 0.05 + 0.2);
+                });
+            }
+
+            playAlert() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.linearRampToValueAtTime(440, now + 0.25);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+
+            playDamage() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(160, now);
+                osc.frequency.linearRampToValueAtTime(60, now + 0.2);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            }
+
+            playWin() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.2, now + i * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.08);
+                    osc.stop(now + i * 0.08 + 0.3);
+                });
+            }
+
+            playDefeat() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(280, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.8);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.8);
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        // Constants
+        const MAP_SIZE = 14;
+        const TOTAL_SNACKS = 5;
+
+        // UI References
+        const UI_TIMER = document.getElementById('ui-timer');
+        const UI_SNACKS = document.getElementById('ui-snacks');
+        const UI_LIVES = document.getElementById('ui-lives');
+        const UI_CROSSHAIR = document.getElementById('ui-crosshair');
+        const SCREEN_START = document.getElementById('screen-start');
+        const SCREEN_RESULT = document.getElementById('screen-result');
+        const SCREEN_PAUSE = document.getElementById('screen-pause');
+        const SCREEN_INVENTORY = document.getElementById('screen-inventory');
+        const INVENTORY_GRID = document.getElementById('inventory-grid');
+        const ALARM_LAYER = document.getElementById('alarm-layer');
+        const SPEED_LAYER = document.getElementById('speed-layer');
+        const BUFF_SPEED_UI = document.getElementById('buff-speed');
+        const DEBUFF_STUN_UI = document.getElementById('debuff-stun');
+        const POV_HANDS = document.getElementById('pov-hands');
+        const EXIT_BANNER = document.getElementById('exit-unlocked-banner');
+        const BTN_START = document.getElementById('btn-start');
+        const BTN_RESTART = document.getElementById('btn-restart');
+        const BTN_PAUSE = document.getElementById('btn-pause');
+        const BTN_RESUME = document.getElementById('btn-resume');
+        const BTN_RESTART_PAUSE = document.getElementById('btn-restart-pause');
+        const BTN_INVENTORY = document.getElementById('btn-inventory');
+        const BTN_CLOSE_INVENTORY = document.getElementById('btn-close-inventory');
+        const BTN_RESUME_INVENTORY = document.getElementById('btn-resume-inventory');
+
+        // Game State Variables
+        let gameState = 'START';
+        let gameTime = 75;
+        let timerInterval = null;
+        let previousState = 'PLAYING';
+        let exitUnlocked = false;
+        let exitMesh = null;
+        let exitLight = null;
+
+        // Key states
+        const keys = {
+            KeyW: false, KeyS: false, KeyA: false, KeyD: false,
+            ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false
+        };
+
+        // Player State
+        const player = {
+            x: 1.5,
+            z: 1.5,
+            angle: 0,
+            pitch: 0,
+            baseSpeed: 0.08,
+            speed: 0.08,
+            baseHeight: 0.5,
+            height: 0.5,
+            vy: 0,
+            isGrounded: true,
+            collected: 0,
+            lives: 3,
+            invincibleTimer: 0,
+            speedBoostTimer: 0,
+            stunTimer: 0,
+            radius: 0.28
+        };
+
+        let bobbingTime = 0;
+
+        // Mr. Krabs State
+        const mrKrabs = {
+            x: 12.5,
+            z: 12.5,
+            angle: 0,
+            speed: 0.02,
+            chaseSpeed: 0.028,
+            state: 'PATROL',
+            patrolIdx: 0,
+            cooldownTimer: 0,
+            fovAngle: Math.PI / 2,
+            visionDistance: 6.0,
+            patrolPath: [
+                { x: 12.5, z: 12.5 },
+                { x: 12.5, z: 2.5 },
+                { x: 2.5, z: 12.5 },
+                { x: 6.5, z: 6.5 }
+            ]
+        };
+
+        // Map layout
+        const MAP = [
+            [1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 2, 2, 2, 0, 1, 0, 2, 2, 2, 2, 0, 1],
+            [1, 0, 2, 2, 2, 0, 0, 0, 2, 2, 2, 2, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 2, 2, 2, 0, 1, 0, 2, 2, 2, 2, 0, 1],
+            [1, 0, 2, 2, 2, 0, 0, 0, 2, 2, 2, 2, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 2, 2, 2, 0, 1, 0, 2, 2, 2, 2, 0, 1],
+            [1, 0, 2, 2, 2, 0, 0, 0, 2, 2, 2, 2, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 4, 4, 5, 0, 0, 0, 0, 2, 2, 2, 2, 0, 1],
+            [1, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+
+        // Three.js Globals
+        let scene, camera, renderer;
+        let mrKrabsGroup;
+        let snacks = [];
+        let items = [];
+        let raycaster, minimapCtx = null;
+
+        function initGame() {
+            gameTime = 75;
+            exitUnlocked = false;
+
+            player.x = 1.5;
+            player.z = 1.5;
+            player.angle = Math.PI / 4;
+            player.pitch = 0;
+            player.height = player.baseHeight;
+            player.vy = 0;
+            player.isGrounded = true;
+            player.collected = 0;
+            player.lives = 3;
+            player.invincibleTimer = 0;
+            player.speedBoostTimer = 0;
+            player.stunTimer = 0;
+            player.speed = player.baseSpeed;
+
+            mrKrabs.x = 12.5;
+            mrKrabs.z = 12.5;
+            mrKrabs.state = 'PATROL';
+            mrKrabs.patrolIdx = 0;
+            mrKrabs.cooldownTimer = 0;
+
+            if (EXIT_BANNER) EXIT_BANNER.classList.add('hidden');
+            if (SPEED_LAYER) SPEED_LAYER.style.display = 'none';
+            if (BUFF_SPEED_UI) BUFF_SPEED_UI.classList.add('hidden');
+            if (DEBUFF_STUN_UI) DEBUFF_STUN_UI.classList.add('hidden');
+
+            if (exitMesh) {
+                exitMesh.material.color.setHex(0xef4444);
+                exitMesh.material.emissive.setHex(0x7f1d1d);
+            }
+            if (exitLight) {
+                exitLight.color.setHex(0xef4444);
+                exitLight.intensity = 0.5;
+            }
+
+            spawnSnacksAndItems();
+            updateUI();
+        }
+
+        function setupTouchControls() {
+            const btnFwd = document.getElementById('touch-fwd');
+            const btnBwd = document.getElementById('touch-bwd');
+            const btnLeft = document.getElementById('touch-left');
+            const btnRight = document.getElementById('touch-right');
+            const btnJump = document.getElementById('touch-jump');
+
+            const bindBtn = (el, code) => {
+                if (!el) return;
+                const startMove = (e) => {
+                    e.preventDefault();
+                    sound.init();
+                    keys[code] = true;
+                };
+                const endMove = (e) => {
+                    e.preventDefault();
+                    keys[code] = false;
+                };
+
+                el.addEventListener('touchstart', startMove, { passive: false });
+                el.addEventListener('touchend', endMove, { passive: false });
+                el.addEventListener('mousedown', startMove);
+                el.addEventListener('mouseup', endMove);
+                el.addEventListener('mouseleave', endMove);
+            };
+
+            bindBtn(btnFwd, 'KeyW');
+            bindBtn(btnBwd, 'KeyS');
+            bindBtn(btnLeft, 'KeyA');
+            bindBtn(btnRight, 'KeyD');
+
+            if (btnJump) {
+                const triggerJump = (e) => {
+                    e.preventDefault();
+                    sound.init();
+                    if (gameState === 'PLAYING' && player.isGrounded && player.stunTimer <= 0) {
+                        player.vy = 0.12;
+                        player.isGrounded = false;
+                        sound.playJump();
+                    }
+                };
+                btnJump.addEventListener('touchstart', triggerJump, { passive: false });
+                btnJump.addEventListener('mousedown', triggerJump);
+            }
+
+            const container = document.getElementById('game-container');
+            let lastTouchX = null;
+            let lastTouchY = null;
+
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches.length > 0) {
+                    const dpadEl = document.getElementById('mobile-dpad-overlay');
+                    if (dpadEl && dpadEl.contains(e.target)) return;
+
+                    lastTouchX = e.touches[0].clientX;
+                    lastTouchY = e.touches[0].clientY;
+                }
+            }, { passive: true });
+
+            container.addEventListener('touchmove', (e) => {
+                if (gameState === 'PLAYING' && e.touches.length > 0 && lastTouchX !== null && lastTouchY !== null) {
+                    const deltaX = e.touches[0].clientX - lastTouchX;
+                    const deltaY = e.touches[0].clientY - lastTouchY;
+
+                    player.angle += deltaX * 0.008;
+                    player.pitch -= deltaY * 0.008;
+                    player.pitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, player.pitch));
+
+                    lastTouchX = e.touches[0].clientX;
+                    lastTouchY = e.touches[0].clientY;
+                }
+            }, { passive: true });
+
+            container.addEventListener('touchend', () => {
+                lastTouchX = null;
+                lastTouchY = null;
+            }, { passive: true });
+        }
+
+        function init3DWorld() {
+            const container = document.getElementById('game-container');
+            const canvas = document.getElementById('gameCanvas');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617);
+            scene.fog = new THREE.FogExp2(0x020617, 0.08);
+
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 100);
+            raycaster = new THREE.Raycaster();
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.shadowMap.enabled = true;
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambient);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            dirLight.position.set(7, 10, 7);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            const storeLight = new THREE.PointLight(0x38bdf8, 1.2, 15);
+            storeLight.position.set(7, 4, 7);
+            scene.add(storeLight);
+
+            // Floor
+            const floorGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.set(MAP_SIZE / 2, 0, MAP_SIZE / 2);
+            scene.add(floor);
+
+            // Ceiling
+            const ceilGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE);
+            const ceilMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+            const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.position.set(MAP_SIZE / 2, 2.5, MAP_SIZE / 2);
+            scene.add(ceiling);
+
+            // Build Map Elements
+            const wallGeo = new THREE.BoxGeometry(1, 2.5, 1);
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
+
+            const shelfGeo = new THREE.BoxGeometry(0.9, 1.8, 0.9);
+            const shelfMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 });
+
+            const counterGeo = new THREE.BoxGeometry(0.9, 1.1, 0.9);
+            const counterMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5 });
+
+            for (let r = 0; r < MAP_SIZE; r++) {
+                for (let c = 0; c < MAP_SIZE; c++) {
+                    const tile = MAP[r][c];
+                    const x = c + 0.5;
+                    const z = r + 0.5;
+
+                    if (tile === 1) {
+                        const wall = new THREE.Mesh(wallGeo, wallMat);
+                        wall.position.set(x, 1.25, z);
+                        scene.add(wall);
+                    } else if (tile === 2) {
+                        const shelf = new THREE.Mesh(shelfGeo, shelfMat);
+                        shelf.position.set(x, 0.9, z);
+                        scene.add(shelf);
+                    } else if (tile === 3) {
+                        const exitGeo = new THREE.BoxGeometry(1, 2.5, 0.2);
+                        const exitMat = new THREE.MeshStandardMaterial({
+                            color: 0xef4444,
+                            emissive: 0x7f1d1d,
+                            roughness: 0.2
+                        });
+                        exitMesh = new THREE.Mesh(exitGeo, exitMat);
+                        exitMesh.position.set(x, 1.25, z);
+                        scene.add(exitMesh);
+
+                        exitLight = new THREE.PointLight(0xef4444, 0.5, 4);
+                        exitLight.position.set(x, 1.5, z + 0.5);
+                        scene.add(exitLight);
+                    } else if (tile === 4 || tile === 5) {
+                        const counter = new THREE.Mesh(counterGeo, counterMat);
+                        counter.position.set(x, 0.55, z);
+                        scene.add(counter);
+                    }
+                }
+            }
+
+            // Create 3D Mr. Krabs Mesh Group
+            mrKrabsGroup = new THREE.Group();
+            
+            const bodyGeo = new THREE.SphereGeometry(0.4, 16, 16);
+            const redMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
+            const body = new THREE.Mesh(bodyGeo, redMat);
+            body.position.y = 0.4;
+            mrKrabsGroup.add(body);
+
+            const eyeGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.25);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(-0.1, 0.7, 0.2);
+            mrKrabsGroup.add(leftEye);
+
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(0.1, 0.7, 0.2);
+            mrKrabsGroup.add(rightEye);
+
+            const pupilGeo = new THREE.SphereGeometry(0.03, 8, 8);
+            const leftPupil = new THREE.Mesh(pupilGeo, pupilMat);
+            leftPupil.position.set(-0.1, 0.8, 0.23);
+            mrKrabsGroup.add(leftPupil);
+
+            const rightPupil = new THREE.Mesh(pupilGeo, pupilMat);
+            rightPupil.position.set(0.1, 0.8, 0.23);
+            mrKrabsGroup.add(rightPupil);
+
+            const clawGeo = new THREE.SphereGeometry(0.15, 8, 8);
+            const leftClaw = new THREE.Mesh(clawGeo, redMat);
+            leftClaw.position.set(-0.5, 0.4, 0.2);
+            mrKrabsGroup.add(leftClaw);
+
+            const rightClaw = new THREE.Mesh(clawGeo, redMat);
+            rightClaw.position.set(0.5, 0.4, 0.2);
+            mrKrabsGroup.add(rightClaw);
+
+            scene.add(mrKrabsGroup);
+
+            const mCanvas = document.getElementById('minimapCanvas');
+            if (mCanvas) {
+                minimapCtx = mCanvas.getContext('2d');
+            }
+
+            container.addEventListener('click', () => {
+                if (gameState === 'PLAYING') {
+                    container.requestPointerLock();
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (document.pointerLockElement === container && gameState === 'PLAYING') {
+                    player.angle += e.movementX * 0.003;
+                    player.pitch -= e.movementY * 0.003;
+                    player.pitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, player.pitch));
+                }
+            });
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function spawnSnacksAndItems() {
+            // Remove existing meshes
+            snacks.forEach(s => { if (s.mesh) scene.remove(s.mesh); });
+            items.forEach(i => { if (i.mesh) scene.remove(i.mesh); });
+
+            snacks = [];
+            items = [];
+
+            // Spawn Snacks
+            const snackPositions = [
+                { x: 3.5, z: 1.5, name: '바삭칩', color: '#f59e0b' },
+                { x: 11.5, z: 3.5, name: '젤리팝', color: '#ec4899' },
+                { x: 4.5, z: 7.5, name: '초코바', color: '#8b5cf6' },
+                { x: 10.5, z: 8.5, name: '감자깡', color: '#10b981' },
+                { x: 2.5, z: 10.5, name: '새우링', color: '#ef4444' }
+            ];
+
+            const snackGeo = new THREE.BoxGeometry(0.35, 0.45, 0.15);
+
+            snackPositions.forEach(p => {
+                const tex = createSnackTexture(p.name, p.color);
+                const snackMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.2 });
+                const mesh = new THREE.Mesh(snackGeo, snackMat);
+                mesh.position.set(p.x, 0.4, p.z);
+                scene.add(mesh);
+
+                snacks.push({
+                    x: p.x,
+                    z: p.z,
+                    name: p.name,
+                    color: p.color,
+                    mesh: mesh,
+                    collected: false
+                });
+            });
+
+            // Spawn Items (Drink: Speed Buff, Banana: Trap)
+            const itemPositions = [
+                { x: 7.5, z: 1.5, type: 'drink', color: 0x3b82f6 },
+                { x: 1.5, z: 5.5, type: 'banana', color: 0xeab308 },
+                { x: 8.5, z: 10.5, type: 'drink', color: 0x3b82f6 }
+            ];
+
+            itemPositions.forEach(ip => {
+                let mesh;
+                if (ip.type === 'drink') {
+                    const drinkGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.3, 12);
+                    const drinkMat = new THREE.MeshStandardMaterial({ color: ip.color, roughness: 0.1, metalness: 0.5 });
+                    mesh = new THREE.Mesh(drinkGeo, drinkMat);
+                } else {
+                    const bananaGeo = new THREE.TorusGeometry(0.15, 0.05, 8, 12, Math.PI);
+                    const bananaMat = new THREE.MeshStandardMaterial({ color: ip.color, roughness: 0.4 });
+                    mesh = new THREE.Mesh(bananaGeo, bananaMat);
+                    mesh.rotation.x = Math.PI / 2;
+                }
+                mesh.position.set(ip.x, 0.2, ip.z);
+                scene.add(mesh);
+
+                items.push({
+                    x: ip.x,
+                    z: ip.z,
+                    type: ip.type,
+                    mesh: mesh,
+                    collected: false
+                });
+            });
+
+            renderInventoryUI();
+        }
+
+        function renderInventoryUI() {
+            if (!INVENTORY_GRID) return;
+            INVENTORY_GRID.innerHTML = '';
+
+            for (let i = 0; i < TOTAL_SNACKS; i++) {
+                const item = snacks[i];
+                const slot = document.createElement('div');
+                slot.className = "aspect-square rounded-xl border flex flex-col items-center justify-center p-1 transition-all relative overflow-hidden ";
+                
+                if (item && item.collected) {
+                    slot.className += "bg-slate-800 border-amber-400 shadow-md shadow-amber-500/20";
+                    slot.innerHTML = `
+                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-slate-900 shadow-sm" style="background-color: ${item.color}">
+                            🍿
+                        </div>
+                        <span class="text-[10px] font-bold text-amber-300 mt-1 truncate w-full text-center">${item.name}</span>
+                    `;
+                } else {
+                    slot.className += "bg-slate-900/50 border-slate-800 text-slate-600";
+                    slot.innerHTML = `
+                        <i class="fa-solid fa-lock text-sm"></i>
+                        <span class="text-[9px] mt-1 font-mono">비어있음</span>
+                    `;
+                }
+                INVENTORY_GRID.appendChild(slot);
+            }
+        }
+
+        function toggleInventory() {
+            if (gameState === 'PLAYING') {
+                previousState = 'PLAYING';
+                gameState = 'INVENTORY';
+                renderInventoryUI();
+                SCREEN_INVENTORY.classList.remove('hidden');
+                if (document.pointerLockElement) {
+                    document.exitPointerLock();
+                }
+            } else if (gameState === 'INVENTORY') {
+                gameState = previousState;
+                SCREEN_INVENTORY.classList.add('hidden');
+                if (gameState === 'PLAYING') {
+                    requestAnimationFrame(gameLoop);
+                }
+            }
+        }
+
+        function togglePause() {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                SCREEN_PAUSE.classList.remove('hidden');
+                if (document.pointerLockElement) {
+                    document.exitPointerLock();
+                }
+            } else if (gameState === 'PAUSED') {
+                gameState = 'PLAYING';
+                SCREEN_PAUSE.classList.add('hidden');
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+            if (e.code === 'KeyI') {
+                if (gameState === 'PLAYING' || gameState === 'INVENTORY') {
+                    toggleInventory();
+                }
+            }
+            if (e.code === 'KeyP' || e.code === 'Escape') {
+                if (gameState === 'INVENTORY') {
+                    toggleInventory();
+                } else if (gameState === 'PLAYING' || gameState === 'PAUSED') {
+                    togglePause();
+                }
+            }
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState === 'PLAYING' && player.isGrounded && player.stunTimer <= 0) {
+                    player.vy = 0.12;
+                    player.isGrounded = false;
+                    sound.playJump();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+        });
+
+        setupTouchControls();
+
+        BTN_START.addEventListener('click', () => { sound.init(); startGame(); });
+        BTN_RESTART.addEventListener('click', () => { sound.init(); startGame(); });
+        BTN_PAUSE.addEventListener('click', () => { togglePause(); });
+        BTN_RESUME.addEventListener('click', () => { togglePause(); });
+        BTN_RESTART_PAUSE.addEventListener('click', () => {
+            SCREEN_PAUSE.classList.add('hidden');
+            sound.init();
+            startGame();
+        });
+        if (BTN_INVENTORY) BTN_INVENTORY.addEventListener('click', () => { toggleInventory(); });
+        if (BTN_CLOSE_INVENTORY) BTN_CLOSE_INVENTORY.addEventListener('click', () => { toggleInventory(); });
+        if (BTN_RESUME_INVENTORY) BTN_RESUME_INVENTORY.addEventListener('click', () => { toggleInventory(); });
+
+        function startGame() {
+            gameState = 'PLAYING';
+            SCREEN_START.classList.add('hidden');
+            SCREEN_RESULT.classList.add('hidden');
+            SCREEN_PAUSE.classList.add('hidden');
+            SCREEN_INVENTORY.classList.add('hidden');
+            initGame();
+
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (gameState === 'PLAYING') {
+                    gameTime--;
+                    updateUI();
+                    if (gameTime <= 0) {
+                        endGame(false, '제한시간 초과! 과자를 모두 털어 탈출하지 못했습니다.');
+                    }
+                }
+            }, 1000);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateUI() {
+            const mins = Math.floor(gameTime / 60).toString().padStart(2, '0');
+            const secs = (gameTime % 60).toString().padStart(2, '0');
+            UI_TIMER.innerText = `${mins}:${secs}`;
+            UI_SNACKS.innerText = `${player.collected} / ${TOTAL_SNACKS}`;
+
+            if (UI_LIVES) {
+                let heartsHtml = '';
+                for (let i = 0; i < 3; i++) {
+                    if (i < player.lives) {
+                        heartsHtml += '<i class="fa-solid fa-heart text-rose-500 transition-transform scale-110"></i>';
+                    } else {
+                        heartsHtml += '<i class="fa-regular fa-heart text-slate-600"></i>';
+                    }
+                }
+                UI_LIVES.innerHTML = heartsHtml;
+            }
+
+            if (player.collected >= TOTAL_SNACKS && !exitUnlocked) {
+                exitUnlocked = true;
+                if (EXIT_BANNER) EXIT_BANNER.classList.remove('hidden');
+
+                if (exitMesh) {
+                    exitMesh.material.color.setHex(0x10b981);
+                    exitMesh.material.emissive.setHex(0x047857);
+                }
+                if (exitLight) {
+                    exitLight.color.setHex(0x10b981);
+                    exitLight.intensity = 2.0;
+                }
+            }
+        }
+
+        function checkInteractions() {
+            // Snacks Collection
+            snacks.forEach(s => {
+                if (!s.collected) {
+                    const dist = Math.hypot(player.x - s.x, player.z - s.z);
+                    if (dist < 0.85) {
+                        s.collected = true;
+                        s.mesh.visible = false;
+                        player.collected++;
+                        sound.playSnack();
+                        updateUI();
+                        renderInventoryUI();
+                    }
+                }
+            });
+
+            // Special Items Collection
+            items.forEach(item => {
+                if (!item.collected) {
+                    const dist = Math.hypot(player.x - item.x, player.z - item.z);
+                    if (dist < 0.75) {
+                        item.collected = true;
+                        item.mesh.visible = false;
+                        if (item.type === 'drink') {
+                            player.speedBoostTimer = 300; // 5초 부스트 (60fps 기준)
+                            sound.playItem();
+                        } else if (item.type === 'banana') {
+                            player.stunTimer = 60; // 1초 스턴
+                            sound.playTrap();
+                        }
+                    }
+                }
+            });
+
+            // Raycasting for Crosshair Feedback
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const activeMeshes = snacks.filter(s => !s.collected).map(s => s.mesh)
+                .concat(items.filter(i => !i.collected).map(i => i.mesh));
+            const intersects = raycaster.intersectObjects(activeMeshes);
+
+            if (intersects.length > 0 && intersects[0].distance < 3.5) {
+                UI_CROSSHAIR.classList.add('crosshair-target');
+            } else {
+                UI_CROSSHAIR.classList.remove('crosshair-target');
+            }
+        }
+
+        function isPositionValid(px, pz) {
+            const r = player.radius;
+            const checkPoints = [
+                { x: px - r, z: pz - r },
+                { x: px + r, z: pz - r },
+                { x: px - r, z: pz + r },
+                { x: px + r, z: pz + r }
+            ];
+
+            for (let pt of checkPoints) {
+                const c = Math.floor(pt.x);
+                const rIdx = Math.floor(pt.z);
+                if (rIdx < 0 || rIdx >= MAP_SIZE || c < 0 || c >= MAP_SIZE) return false;
+                const tile = MAP[rIdx][c];
+                if (tile !== 0 && tile !== 3) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function canMrKrabsSeePlayer() {
+            const dist = Math.hypot(player.x - mrKrabs.x, player.z - mrKrabs.z);
+            if (dist > mrKrabs.visionDistance) return false;
+
+            const angleToPlayer = Math.atan2(player.x - mrKrabs.x, player.z - mrKrabs.z);
+            let angleDiff = Math.abs(angleToPlayer - mrKrabs.angle);
+            angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+
+            if (Math.abs(angleDiff) > mrKrabs.fovAngle / 2) return false;
+
+            return isLineOfSightClear(mrKrabs.x, mrKrabs.z, player.x, player.z);
+        }
+
+        function isLineOfSightClear(x1, z1, x2, z2) {
+            const distance = Math.hypot(x2 - x1, z2 - z1);
+            const steps = Math.ceil(distance * 8);
+            for (let i = 1; i < steps; i++) {
+                const t = i / steps;
+                const checkX = x1 + (x2 - x1) * t;
+                const checkZ = z1 + (z2 - z1) * t;
+                const col = Math.floor(checkX);
+                const row = Math.floor(checkZ);
+
+                if (row >= 0 && row < MAP_SIZE && col >= 0 && col < MAP_SIZE) {
+                    const tile = MAP[row][col];
+                    if (tile === 1 || tile === 2 || tile === 4 || tile === 5) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function updatePlayer() {
+            // Speed Buff & Stun Status Handlers
+            if (player.speedBoostTimer > 0) {
+                player.speedBoostTimer--;
+                player.speed = player.baseSpeed * 1.5;
+                if (SPEED_LAYER) SPEED_LAYER.style.display = 'block';
+                if (BUFF_SPEED_UI) BUFF_SPEED_UI.classList.remove('hidden');
+            } else {
+                player.speed = player.baseSpeed;
+                if (SPEED_LAYER) SPEED_LAYER.style.display = 'none';
+                if (BUFF_SPEED_UI) BUFF_SPEED_UI.classList.add('hidden');
+            }
+
+            if (player.stunTimer > 0) {
+                player.stunTimer--;
+                if (DEBUFF_STUN_UI) DEBUFF_STUN_UI.classList.remove('hidden');
+            } else {
+                if (DEBUFF_STUN_UI) DEBUFF_STUN_UI.classList.add('hidden');
+            }
+
+            if (player.invincibleTimer > 0) {
+                player.invincibleTimer--;
+                POV_HANDS.style.opacity = (Math.floor(player.invincibleTimer / 6) % 2 === 0) ? '0.3' : '0.9';
+            } else {
+                POV_HANDS.style.opacity = '0.9';
+            }
+
+            let moveFwd = 0;
+            let moveStrafe = 0;
+
+            // 스턴 중에는 이동 불가
+            if (player.stunTimer <= 0) {
+                if (keys.KeyW || keys.ArrowUp) moveFwd += player.speed;
+                if (keys.KeyS || keys.ArrowDown) moveFwd -= player.speed;
+                if (keys.KeyA || keys.ArrowLeft) moveStrafe -= player.speed;
+                if (keys.KeyD || keys.ArrowRight) moveStrafe += player.speed;
+            }
+
+            if (!player.isGrounded) {
+                player.height += player.vy;
+                player.vy -= 0.008;
+                if (player.height <= player.baseHeight) {
+                    player.height = player.baseHeight;
+                    player.vy = 0;
+                    player.isGrounded = true;
+                }
+            }
+
+            if (moveFwd !== 0 || moveStrafe !== 0) {
+                const sin = Math.sin(player.angle);
+                const cos = Math.cos(player.angle);
+
+                const dx = (sin * moveFwd) + (cos * moveStrafe);
+                const dz = (-cos * moveFwd) + (sin * moveStrafe);
+
+                if (isPositionValid(player.x + dx, player.z)) {
+                    player.x += dx;
+                }
+                if (isPositionValid(player.x, player.z + dz)) {
+                    player.z += dz;
+                }
+
+                if (player.isGrounded) {
+                    bobbingTime += player.speedBoostTimer > 0 ? 0.4 : 0.25;
+                    POV_HANDS.style.transform = `translateX(-50%) translateY(${Math.sin(bobbingTime) * 8}px)`;
+                }
+            }
+
+            camera.position.set(player.x, player.height, player.z);
+            const targetX = player.x + Math.sin(player.angle) * Math.cos(player.pitch);
+            const targetY = player.height + Math.sin(player.pitch);
+            const targetZ = player.z - Math.cos(player.angle) * Math.cos(player.pitch);
+            camera.lookAt(targetX, targetY, targetZ);
+
+            checkInteractions();
+
+            // Check Exit Condition
+            if (exitUnlocked) {
+                const distToExit = Math.hypot(player.x - 1.5, player.z - 0.5);
+                if (distToExit < 0.9) {
+                    endGame(true, '모든 과자를 털어 3D 편의점을 무사히 탈출했습니다!');
+                }
+            }
+        }
+
+        function updateMrKrabs() {
+            if (mrKrabs.cooldownTimer > 0) {
+                mrKrabs.cooldownTimer--;
+                mrKrabsGroup.position.set(mrKrabs.x, 0, mrKrabs.z);
+                return;
+            }
+
+            const dist = Math.hypot(player.x - mrKrabs.x, player.z - mrKrabs.z);
+            const seesPlayer = canMrKrabsSeePlayer();
+
+            if (seesPlayer) {
+                if (mrKrabs.state !== 'CHASE' && mrKrabs.state !== 'ENRAGED') {
+                    mrKrabs.state = 'CHASE';
+                    sound.playAlert();
+                    ALARM_LAYER.classList.add('alarm-active');
+                }
+            } else if (mrKrabs.state === 'CHASE' && dist > mrKrabs.visionDistance * 1.2) {
+                mrKrabs.state = 'PATROL';
+                ALARM_LAYER.classList.remove('alarm-active');
+            }
+
+            if (mrKrabs.state === 'CHASE' || mrKrabs.state === 'ENRAGED') {
+                const angle = Math.atan2(player.x - mrKrabs.x, player.z - mrKrabs.z);
+                const spd = mrKrabs.state === 'ENRAGED' ? mrKrabs.chaseSpeed * 1.2 : mrKrabs.chaseSpeed;
+
+                mrKrabs.x += Math.sin(angle) * spd;
+                mrKrabs.z += Math.cos(angle) * spd;
+                mrKrabs.angle = angle;
+
+                if (dist < 0.75) {
+                    if (player.invincibleTimer <= 0) {
+                        player.lives--;
+                        sound.playDamage();
+                        updateUI();
+
+                        if (player.lives <= 0) {
+                            endGame(false, '집게사장에게 모든 생명을 잃고 잡히고 말았습니다!');
+                            return;
+                        } else {
+                            player.invincibleTimer = 120;
+                            mrKrabs.cooldownTimer = 100;
+                            mrKrabs.state = 'PATROL';
+                            ALARM_LAYER.classList.remove('alarm-active');
+
+                            const pushAngle = Math.atan2(player.x - mrKrabs.x, player.z - mrKrabs.z);
+                            let targetX = player.x + Math.sin(pushAngle) * 1.5;
+                            let targetZ = player.z + Math.cos(pushAngle) * 1.5;
+
+                            if (isPositionValid(targetX, targetZ)) {
+                                player.x = targetX;
+                                player.z = targetZ;
+                            }
+                        }
+                    }
+                }
+            } else {
+                const target = mrKrabs.patrolPath[mrKrabs.patrolIdx];
+                const pDist = Math.hypot(target.x - mrKrabs.x, target.z - mrKrabs.z);
+                if (pDist < 0.4) {
+                    mrKrabs.patrolIdx = (mrKrabs.patrolIdx + 1) % mrKrabs.patrolPath.length;
+                } else {
+                    const pAngle = Math.atan2(target.x - mrKrabs.x, target.z - mrKrabs.z);
+                    mrKrabs.x += Math.sin(pAngle) * mrKrabs.speed;
+                    mrKrabs.z += Math.cos(pAngle) * mrKrabs.speed;
+                    mrKrabs.angle = pAngle;
+                }
+            }
+
+            mrKrabsGroup.position.set(mrKrabs.x, 0, mrKrabs.z);
+            mrKrabsGroup.rotation.y = mrKrabs.angle;
+        }
+
+        function animate3DObjects() {
+            const time = Date.now() * 0.003;
+            snacks.forEach(s => {
+                if (!s.collected && s.mesh) {
+                    s.mesh.rotation.y += 0.03;
+                    s.mesh.position.y = 0.4 + Math.sin(time + s.x) * 0.08;
+                }
+            });
+            items.forEach(i => {
+                if (!i.collected && i.mesh) {
+                    i.mesh.rotation.y += 0.04;
+                    i.mesh.position.y = 0.2 + Math.sin(time * 1.2 + i.x) * 0.05;
+                }
+            });
+        }
+
+        function renderMinimap() {
+            if (!minimapCtx) return;
+
+            const size = 112;
+            const scale = size / MAP_SIZE;
+
+            minimapCtx.fillStyle = '#020617';
+            minimapCtx.fillRect(0, 0, size, size);
+
+            for (let r = 0; r < MAP_SIZE; r++) {
+                for (let c = 0; c < MAP_SIZE; c++) {
+                    const tile = MAP[r][c];
+                    if (tile === 1) {
+                        minimapCtx.fillStyle = '#334155';
+                        minimapCtx.fillRect(c * scale, r * scale, scale, scale);
+                    } else if (tile === 2) {
+                        minimapCtx.fillStyle = '#0284c7';
+                        minimapCtx.fillRect(c * scale + 1, r * scale + 1, scale - 2, scale - 2);
+                    } else if (tile === 3) {
+                        minimapCtx.fillStyle = exitUnlocked ? '#10b981' : '#ef4444';
+                        minimapCtx.fillRect(c * scale, r * scale, scale, scale);
+                    } else if (tile === 4 || tile === 5) {
+                        minimapCtx.fillStyle = '#475569';
+                        minimapCtx.fillRect(c * scale + 1, r * scale + 1, scale - 2, scale - 2);
+                    }
+                }
+            }
+
+            snacks.forEach(s => {
+                if (!s.collected) {
+                    minimapCtx.fillStyle = '#f59e0b';
+                    minimapCtx.beginPath();
+                    minimapCtx.arc(s.x * scale, s.z * scale, 3, 0, Math.PI * 2);
+                    minimapCtx.fill();
+                }
+            });
+
+            items.forEach(i => {
+                if (!i.collected) {
+                    minimapCtx.fillStyle = i.type === 'drink' ? '#3b82f6' : '#eab308';
+                    minimapCtx.beginPath();
+                    minimapCtx.arc(i.x * scale, i.z * scale, 2.5, 0, Math.PI * 2);
+                    minimapCtx.fill();
+                }
+            });
+
+            minimapCtx.fillStyle = '#ef4444';
+            minimapCtx.beginPath();
+            minimapCtx.arc(mrKrabs.x * scale, mrKrabs.z * scale, 4.5, 0, Math.PI * 2);
+            minimapCtx.fill();
+
+            const krabsPx = mrKrabs.x * scale;
+            const krabsPz = mrKrabs.z * scale;
+            const visDistPx = mrKrabs.visionDistance * scale;
+            const halfFov = mrKrabs.fovAngle / 2;
+
+            minimapCtx.fillStyle = mrKrabs.state === 'CHASE' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(251, 191, 36, 0.18)';
+            minimapCtx.beginPath();
+            minimapCtx.moveTo(krabsPx, krabsPz);
+            minimapCtx.arc(
+                krabsPx, krabsPz, visDistPx,
+                (Math.PI / 2 - mrKrabs.angle) - halfFov,
+                (Math.PI / 2 - mrKrabs.angle) + halfFov
+            );
+            minimapCtx.closePath();
+            minimapCtx.fill();
+
+            minimapCtx.strokeStyle = '#f87171';
+            minimapCtx.lineWidth = 1.5;
+            minimapCtx.beginPath();
+            minimapCtx.moveTo(mrKrabs.x * scale, mrKrabs.z * scale);
+            minimapCtx.lineTo(
+                (mrKrabs.x + Math.sin(mrKrabs.angle) * 1.2) * scale,
+                (mrKrabs.z + Math.cos(mrKrabs.angle) * 1.2) * scale
+            );
+            minimapCtx.stroke();
+
+            const px = player.x * scale;
+            const pz = player.z * scale;
+
+            minimapCtx.fillStyle = '#10b981';
+            minimapCtx.beginPath();
+            minimapCtx.arc(px, pz, 4, 0, Math.PI * 2);
+            minimapCtx.fill();
+
+            minimapCtx.strokeStyle = '#34d399';
+            minimapCtx.lineWidth = 2;
+            minimapCtx.beginPath();
+            minimapCtx.moveTo(px, pz);
+            minimapCtx.lineTo(
+                px + Math.sin(player.angle) * 10,
+                pz - Math.cos(player.angle) * 10
+            );
+            minimapCtx.stroke();
+        }
+
+        function endGame(isWin, message) {
+            gameState = isWin ? 'WIN' : 'LOSE';
+            clearInterval(timerInterval);
+            ALARM_LAYER.classList.remove('alarm-active');
+            if (SPEED_LAYER) SPEED_LAYER.style.display = 'none';
+            if (EXIT_BANNER) EXIT_BANNER.classList.add('hidden');
+
+            const resultTitle = document.getElementById('result-title');
+            const resultMsg = document.getElementById('result-msg');
+            const resultIcon = document.getElementById('result-icon');
+            const resultBox = document.getElementById('result-box');
+            const statTime = document.getElementById('stat-time');
+            const statSnacks = document.getElementById('stat-snacks');
+
+            const mins = Math.floor(gameTime / 60).toString().padStart(2, '0');
+            const secs = (gameTime % 60).toString().padStart(2, '0');
+            statTime.innerText = `${mins}:${secs}`;
+            statSnacks.innerText = `${player.collected} / ${TOTAL_SNACKS} 개`;
+
+            if (isWin) {
+                resultTitle.innerText = '미션 완벽 성공!';
+                resultTitle.className = 'text-3xl sm:text-4xl font-black mb-2 text-emerald-400';
+                resultMsg.innerText = message;
+                resultIcon.innerText = '🎉';
+                resultBox.className = 'max-w-md w-full bg-slate-900 border-2 border-emerald-500 p-6 sm:p-8 rounded-3xl shadow-2xl';
+                sound.playWin();
+            } else {
+                resultTitle.innerText = '작전 실패...';
+                resultTitle.className = 'text-3xl sm:text-4xl font-black mb-2 text-red-500';
+                resultMsg.innerText = message;
+                resultIcon.innerText = '🦀';
+                resultBox.className = 'max-w-md w-full bg-slate-900 border-2 border-red-500 p-6 sm:p-8 rounded-3xl shadow-2xl';
+                sound.playDefeat();
+            }
+
+            SCREEN_RESULT.classList.remove('hidden');
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('game-container');
+            if (!container || !renderer || !camera) return;
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function gameLoop() {
+            if (gameState === 'PLAYING') {
+                updatePlayer();
+                updateMrKrabs();
+                animate3DObjects();
+            }
+
+            renderer.render(scene, camera);
+            renderMinimap();
+
+            if (gameState === 'PLAYING') {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        window.onload = function() {
+            init3DWorld();
+            initGame();
+            renderer.render(scene, camera);
+            renderMinimap();
+        };
+
+    </script>
+</body>
+</html>
